@@ -4,36 +4,23 @@
 // Init the DS1302
 // DS1302 rtc([CE/RST], [I/O], [CLOCK]);
 DS1302 rtc(8, 7, 6);
+Time t;
 
-void clockdate() 
-
-{
-
-       
-
-       
-
-}
- 
 void setup()
 
 {
 
   Serial.begin(9600);
 
-  // ตั้งเวลาครั้งแรก เอา comment นี้ออก ถ้าตั้งเสร็จแล้ว comment นี้ไว้เพื้อให้เวลาเดินต่อ
-
   rtc.halt(false);
-
   rtc.writeProtect(false);
-
-  rtc.setDOW(SATUARDAY);         
-
-  rtc.setTime(16, 36,00);      
-
-  rtc.setDate(13, 6, 2020);    
-
-  rtc.writeProtect(true);
+  // Setup Serial connection
+  Serial.begin(9600);
+  
+ // rtc.setDOW(SATURDAY);        
+ // rtc.setTime(17, 50,30 );     
+  //rtc.setDate(13, 6, 2020);   
+  
   }
 
  
@@ -42,8 +29,18 @@ void loop()
 
 { 
 
-  clockdate();
+Serial.print(rtc.getDOWStr());
+  Serial.print(" ");
+  // Send date
+  Serial.print(rtc.getDateStr());
+  Serial.print(" -- ");
+  // Send time
+  Serial.println(rtc.getTimeStr());
+  // Wait one second before repeating :)
+  delay (1000);
 
-  delay(1000);
+ 
 
 }
+
+  

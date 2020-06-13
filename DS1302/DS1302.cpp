@@ -1,252 +1,516 @@
-#if defined(ARDUINO) && ARDUINO >= 100
-#include "Arduino.h"
-#else
-#include "WProgram.h"
-#endif
+/*
+  DS1302.cpp - Arduino library support for the DS1302 Trickle Charge Timekeeping Chip
+  Copyright (C)2015 Rinky-Dink Electronics, Henning Karlsen. All right reserved
+  
+  This library has been made to easily interface and use the DS1302 RTC with
+  the Arduino.
+
+  You can find the latest version of the library at 
+  http://www.RinkyDinkElectronics.com/
+
+  This library is free software; you can redistribute it and/or
+  modify it under the terms of the CC BY-NC-SA 3.0 license.
+  Please see the included documents for further information.
+
+  Commercial use of this library requires you to buy a license that
+  will allow commercial use. This includes using the library,
+  modified or not, as a tool to sell products.
+
+  The license applies to all part of the library including the 
+  examples and tools supplied with the library.
+*/
 #include "DS1302.h"
 
-#include <stdint.h>
+#define REG_SEC		0
+#define REG_MIN		1
+#define REG_HOUR	2
+#define REG_DATE	3
+#define REG_MON		4
+#define REG_DOW		5
+#define REG_YEAR	6
+#define REG_WP		7
+#define REG_TCR		8
 
-namespace {
+/* Public */
 
-enum Register {
-  kSecondReg       = 0,
-  kMinuteReg       = 1,
-  kHourReg         = 2,
-  kDateReg         = 3,
-  kMonthReg        = 4,
-  kDayReg          = 5,
-  kYearReg         = 6,
-  kWriteProtectReg = 7,
-
-  // The RAM register space follows the clock register space.
-  kRamAddress0     = 32
-};
-
-enum Command {
-  kClockBurstRead  = 0xBF,
-  kClockBurstWrite = 0xBE,
-  kRamBurstRead    = 0xFF,
-  kRamBurstWrite   = 0xFE
-};
-
-// Establishes and terminates a three-wire SPI session.
-class SPISession {
- public:
-  SPISession(const int ce_pin, const int io_pin, const int sclk_pin)
-      : ce_pin_(ce_pin), io_pin_(io_pin), sclk_pin_(sclk_pin) {
-    digitalWrite(sclk_pin_, LOW);
-    digitalWrite(ce_pin_, HIGH);
-    delayMicroseconds(4);  // tCC
-  }
-  ~SPISession() {
-    digitalWrite(ce_pin_, LOW);
-    delayMicroseconds(4);  // tCWH
-  }
-
- private:
-  const int ce_pin_;
-  const int io_pin_;
-  const int sclk_pin_;
-};
-
-// Returns the decoded decimal value from a binary-coded decimal (BCD) byte.
-// Assumes 'bcd' is coded with 4-bits per digit, with the tens place digit in
-// the upper 4 MSBs.
-uint8_t bcdToDec(const uint8_t bcd) {
-  return (10 * ((bcd & 0xF0) >> 4) + (bcd & 0x0F));
+Time::Time()
+{
+	this->year = 2010;
+	this->mon  = 1;
+	this->date = 1;
+	this->hour = 0;
+	this->min  = 0;
+	this->sec  = 0;
+	this->dow  = 5;
 }
 
-// Returns the binary-coded decimal of 'dec'. Inverse of bcdToDec.
-uint8_t decToBcd(const uint8_t dec) {
-  const uint8_t tens = dec / 10;
-  const uint8_t ones = dec % 10;
-  return (tens << 4) | ones;
+DS1302_RAM::DS1302_RAM()
+{
+	for (int i=0; i<31; i++)
+		cell[i]=0;
 }
 
-// Returns the hour in 24-hour format from the hour register value.
-uint8_t hourFromRegisterValue(const uint8_t value) {
-  uint8_t adj;
-  if (value & 128)  // 12-hour mode
-    adj = 12 * ((value & 32) >> 5);
-  else           // 24-hour mode
-    adj = 10 * ((value & (32 + 16)) >> 4);
-  return (value & 15) + adj;
+DS1302::DS1302(uint8_t ce_pin, uint8_t data_pin, uint8_t sclk_pin)
+{
+	_ce_pin = ce_pin;
+	_data_pin = data_pin;
+	_sclk_pin = sclk_pin;
+
+	pinMode(_ce_pin, OUTPUT);
+	pinMode(_sclk_pin, OUTPUT);
 }
 
-}  // namespace
-
-Time::Time(const uint16_t yr, const uint8_t mon, const uint8_t date,
-           const uint8_t hr, const uint8_t min, const uint8_t sec,
-           const Day day) {
-  this->yr   = yr;
-  this->mon  = mon;
-  this->date = date;
-  this->hr   = hr;
-  this->min  = min;
-  this->sec  = sec;
-  this->day  = day;
+Time DS1302::getTime()
+{
+	Time t;
+	_burstRead();
+	t.sec	= _decode(_burstArray[0]);
+	t.min	= _decode(_burstArray[1]);
+	t.hour	= _decodeH(_burstArray[2]);
+	t.date	= _decode(_burstArray[3]);
+	t.mon	= _decode(_burstArray[4]);
+	t.dow	= _burstArray[5];
+	t.year	= _decodeY(_burstArray[6])+2000;
+	return t;
 }
 
-DS1302::DS1302(const uint8_t ce_pin, const uint8_t io_pin,
-               const uint8_t sclk_pin) {
-  ce_pin_ = ce_pin;
-  io_pin_ = io_pin;
-  sclk_pin_ = sclk_pin;
-
-  digitalWrite(ce_pin, LOW);
-  pinMode(ce_pin, OUTPUT);
-  pinMode(io_pin, INPUT);
-  digitalWrite(sclk_pin, LOW);
-  pinMode(sclk_pin, OUTPUT);
+void DS1302::setTime(uint8_t hour, uint8_t min, uint8_t sec)
+{
+	if (((hour>=0) && (hour<24)) && ((min>=0) && (min<60)) && ((sec>=0) && (sec<60)))
+	{
+		_writeRegister(REG_HOUR, _encode(hour));
+		_writeRegister(REG_MIN, _encode(min));
+		_writeRegister(REG_SEC, _encode(sec));
+	}
 }
 
-void DS1302::writeOut(const uint8_t value, bool readAfter) {
-  pinMode(io_pin_, OUTPUT);
-
-  for (int i = 0; i < 8; ++i) {
-    digitalWrite(io_pin_, (value >> i) & 1);
-    delayMicroseconds(1);
-    digitalWrite(sclk_pin_, HIGH);
-    delayMicroseconds(1);
-
-    if (readAfter && i == 7) {
-      // We're about to read data -- ensure the pin is back in input mode
-      // before the clock is lowered.
-      pinMode(io_pin_, INPUT);
-    } else {
-      digitalWrite(sclk_pin_, LOW);
-      delayMicroseconds(1);
-    }
-  }
+void DS1302::setDate(uint8_t date, uint8_t mon, uint16_t year)
+{
+	if (((date>0) && (date<=31)) && ((mon>0) && (mon<=12)) && ((year>=2000) && (year<3000)))
+	{
+		year -= 2000;
+		_writeRegister(REG_YEAR, _encode(year));
+		_writeRegister(REG_MON, _encode(mon));
+		_writeRegister(REG_DATE, _encode(date));
+	}
 }
 
-uint8_t DS1302::readIn() {
-  uint8_t input_value = 0;
-  uint8_t bit = 0;
-  pinMode(io_pin_, INPUT);
-
-  // Bits from the DS1302 are output on the falling edge of the clock
-  // cycle. This is called after readIn (which will leave the clock low) or
-  // writeOut(..., true) (which will leave it high).
-  for (int i = 0; i < 8; ++i) {
-    digitalWrite(sclk_pin_, HIGH);
-    delayMicroseconds(1);
-    digitalWrite(sclk_pin_, LOW);
-    delayMicroseconds(1);
-
-    bit = digitalRead(io_pin_);
-    input_value |= (bit << i);  // Bits are read LSB first.
-  }
-
-  return input_value;
+void DS1302::setDOW(uint8_t dow)
+{
+	if ((dow>0) && (dow<8))
+		_writeRegister(REG_DOW, dow);
 }
 
-uint8_t DS1302::readRegister(const uint8_t reg) {
-  const SPISession s(ce_pin_, io_pin_, sclk_pin_);
-
-  const uint8_t cmd_byte = (0x81 | (reg << 1));
-  writeOut(cmd_byte, true);
-  return readIn();
+char *DS1302::getTimeStr(uint8_t format)
+{
+	char *output= "xxxxxxxx";
+	Time t;
+	t=getTime();
+	if (t.hour<10)
+		output[0]=48;
+	else
+		output[0]=char((t.hour / 10)+48);
+	output[1]=char((t.hour % 10)+48);
+	output[2]=58;
+	if (t.min<10)
+		output[3]=48;
+	else
+		output[3]=char((t.min / 10)+48);
+	output[4]=char((t.min % 10)+48);
+	output[5]=58;
+	if (format==FORMAT_SHORT)
+		output[5]=0;
+	else
+	{
+	if (t.sec<10)
+		output[6]=48;
+	else
+		output[6]=char((t.sec / 10)+48);
+	output[7]=char((t.sec % 10)+48);
+	output[8]=0;
+	}
+	return output;
 }
 
-void DS1302::writeRegister(const uint8_t reg, const uint8_t value) {
-  const SPISession s(ce_pin_, io_pin_, sclk_pin_);
-
-  const uint8_t cmd_byte = (0x80 | (reg << 1));
-  writeOut(cmd_byte);
-  writeOut(value);
+char *DS1302::getDateStr(uint8_t slformat, uint8_t eformat, char divider)
+{
+	char *output= "xxxxxxxxxx";
+	int yr, offset;
+	Time t;
+	t=getTime();
+	switch (eformat)
+	{
+		case FORMAT_LITTLEENDIAN:
+			if (t.date<10)
+				output[0]=48;
+			else
+				output[0]=char((t.date / 10)+48);
+			output[1]=char((t.date % 10)+48);
+			output[2]=divider;
+			if (t.mon<10)
+				output[3]=48;
+			else
+				output[3]=char((t.mon / 10)+48);
+			output[4]=char((t.mon % 10)+48);
+			output[5]=divider;
+			if (slformat==FORMAT_SHORT)
+			{
+				yr=t.year-2000;
+				if (yr<10)
+					output[6]=48;
+				else
+					output[6]=char((yr / 10)+48);
+				output[7]=char((yr % 10)+48);
+				output[8]=0;
+			}
+			else
+			{
+				yr=t.year;
+				output[6]=char((yr / 1000)+48);
+				output[7]=char(((yr % 1000) / 100)+48);
+				output[8]=char(((yr % 100) / 10)+48);
+				output[9]=char((yr % 10)+48);
+				output[10]=0;
+			}
+			break;
+		case FORMAT_BIGENDIAN:
+			if (slformat==FORMAT_SHORT)
+				offset=0;
+			else
+				offset=2;
+			if (slformat==FORMAT_SHORT)
+			{
+				yr=t.year-2000;
+				if (yr<10)
+					output[0]=48;
+				else
+					output[0]=char((yr / 10)+48);
+				output[1]=char((yr % 10)+48);
+				output[2]=divider;
+			}
+			else
+			{
+				yr=t.year;
+				output[0]=char((yr / 1000)+48);
+				output[1]=char(((yr % 1000) / 100)+48);
+				output[2]=char(((yr % 100) / 10)+48);
+				output[3]=char((yr % 10)+48);
+				output[4]=divider;
+			}
+			if (t.mon<10)
+				output[3+offset]=48;
+			else
+				output[3+offset]=char((t.mon / 10)+48);
+			output[4+offset]=char((t.mon % 10)+48);
+			output[5+offset]=divider;
+			if (t.date<10)
+				output[6+offset]=48;
+			else
+				output[6+offset]=char((t.date / 10)+48);
+			output[7+offset]=char((t.date % 10)+48);
+			output[8+offset]=0;
+			break;
+		case FORMAT_MIDDLEENDIAN:
+			if (t.mon<10)
+				output[0]=48;
+			else
+				output[0]=char((t.mon / 10)+48);
+			output[1]=char((t.mon % 10)+48);
+			output[2]=divider;
+			if (t.date<10)
+				output[3]=48;
+			else
+				output[3]=char((t.date / 10)+48);
+			output[4]=char((t.date % 10)+48);
+			output[5]=divider;
+			if (slformat==FORMAT_SHORT)
+			{
+				yr=t.year-2000;
+				if (yr<10)
+					output[6]=48;
+				else
+					output[6]=char((yr / 10)+48);
+				output[7]=char((yr % 10)+48);
+				output[8]=0;
+			}
+			else
+			{
+				yr=t.year;
+				output[6]=char((yr / 1000)+48);
+				output[7]=char(((yr % 1000) / 100)+48);
+				output[8]=char(((yr % 100) / 10)+48);
+				output[9]=char((yr % 10)+48);
+				output[10]=0;
+			}
+			break;
+	}
+	return output;
 }
 
-void DS1302::writeProtect(const bool enable) {
-  writeRegister(kWriteProtectReg, (enable << 7));
+char *DS1302::getDOWStr(uint8_t format)
+{
+	char *output= "xxxxxxxxx";
+	Time t;
+	t=getTime();
+	switch (t.dow)
+	{
+		case MONDAY:
+			output="Monday";
+			break;
+		case TUESDAY:
+			output="Tuesday";
+			break;
+		case WEDNESDAY:
+			output="Wednesday";
+			break;
+		case THURSDAY:
+			output="Thursday";
+			break;
+		case FRIDAY:
+			output="Friday";
+			break;
+		case SATURDAY:
+			output="Saturday";
+			break;
+		case SUNDAY:
+			output="Sunday";
+			break;
+	}     
+	if (format==FORMAT_SHORT)
+		output[3]=0;
+	return output;
 }
 
-void DS1302::halt(const bool enable) {
-  uint8_t sec = readRegister(kSecondReg);
-  sec &= ~(1 << 7);
-  sec |= (enable << 7);
-  writeRegister(kSecondReg, sec);
+char *DS1302::getMonthStr(uint8_t format)
+{
+	char *output= "xxxxxxxxx";
+	Time t;
+	t=getTime();
+	switch (t.mon)
+	{
+		case 1:
+			output="January";
+			break;
+		case 2:
+			output="February";
+			break;
+		case 3:
+			output="March";
+			break;
+		case 4:
+			output="April";
+			break;
+		case 5:
+			output="May";
+			break;
+		case 6:
+			output="June";
+			break;
+		case 7:
+			output="July";
+			break;
+		case 8:
+			output="August";
+			break;
+		case 9:
+			output="September";
+			break;
+		case 10:
+			output="October";
+			break;
+		case 11:
+			output="November";
+			break;
+		case 12:
+			output="December";
+			break;
+	}     
+	if (format==FORMAT_SHORT)
+		output[3]=0;
+	return output;
 }
 
-Time DS1302::time() {
-  const SPISession s(ce_pin_, io_pin_, sclk_pin_);
-
-  Time t(2099, 1, 1, 0, 0, 0, Time::kSunday);
-  writeOut(kClockBurstRead, true);
-  t.sec = bcdToDec(readIn() & 0x7F);
-  t.min = bcdToDec(readIn());
-  t.hr = hourFromRegisterValue(readIn());
-  t.date = bcdToDec(readIn());
-  t.mon = bcdToDec(readIn());
-  t.day = static_cast<Time::Day>(bcdToDec(readIn()));
-  t.yr = 2000 + bcdToDec(readIn());
-  return t;
+void DS1302::halt(bool enable)
+{
+  uint8_t _reg = _readRegister(REG_SEC);
+  _reg &= ~(1 << 7);
+  _reg |= (enable << 7);
+  _writeRegister(REG_SEC, _reg);
 }
 
-void DS1302::time(const Time t) {
-  // We want to maintain the Clock Halt flag if it is set.
-  const uint8_t ch_value = readRegister(kSecondReg) & 0x80;
-
-  const SPISession s(ce_pin_, io_pin_, sclk_pin_);
-
-  writeOut(kClockBurstWrite);
-  writeOut(ch_value | decToBcd(t.sec));
-  writeOut(decToBcd(t.min));
-  writeOut(decToBcd(t.hr));
-  writeOut(decToBcd(t.date));
-  writeOut(decToBcd(t.mon));
-  writeOut(decToBcd(static_cast<uint8_t>(t.day)));
-  writeOut(decToBcd(t.yr - 2000));
-  // All clock registers *and* the WP register have to be written for the time
-  // to be set.
-  writeOut(0);  // Write protection register.
+void DS1302::writeProtect(bool enable)
+{
+  uint8_t _reg = (enable << 7);
+  _writeRegister(REG_WP, _reg);
 }
 
-void DS1302::writeRam(const uint8_t address, const uint8_t value) {
-  if (address >= kRamSize) {
-    return;
-  }
-
-  writeRegister(kRamAddress0 + address, value);
+void DS1302::setTCR(uint8_t value)
+{
+	_writeRegister(REG_TCR, value);
 }
 
-uint8_t DS1302::readRam(const uint8_t address) {
-  if (address >= kRamSize) {
-    return 0;
-  }
+/* Private */
 
-  return readRegister(kRamAddress0 + address);
+uint8_t DS1302::_readByte()
+{
+	pinMode(_data_pin, INPUT);
+
+	uint8_t value = 0;
+	uint8_t currentBit = 0;
+
+	for (int i = 0; i < 8; ++i)
+	{
+		currentBit = digitalRead(_data_pin);
+		value |= (currentBit << i);
+		digitalWrite(_sclk_pin, HIGH);
+		delayMicroseconds(1);
+		digitalWrite(_sclk_pin, LOW);
+	}
+	return value;
 }
 
-void DS1302::writeRamBulk(const uint8_t* const data, int len) {
-  if (len <= 0) {
-    return;
-  }
-  if (len > kRamSize) {
-    len = kRamSize;
-  }
-
-  const SPISession s(ce_pin_, io_pin_, sclk_pin_);
-
-  writeOut(kRamBurstWrite);
-  for (int i = 0; i < len; ++i) {
-    writeOut(data[i]);
-  }
+void DS1302::_writeByte(uint8_t value)
+{
+	pinMode(_data_pin, OUTPUT);
+	shiftOut(_data_pin, _sclk_pin, LSBFIRST, value);
 }
 
-void DS1302::readRamBulk(uint8_t* const data, int len) {
-  if (len <= 0) {
-    return;
-  }
-  if (len > kRamSize) {
-    len = kRamSize;
-  }
+uint8_t DS1302::_readRegister(uint8_t reg)
+{
+	uint8_t cmdByte = 129;
+	cmdByte |= (reg << 1);
 
-  const SPISession s(ce_pin_, io_pin_, sclk_pin_);
+	uint8_t readValue;
 
-  writeOut(kRamBurstRead, true);
-  for (int i = 0; i < len; ++i) {
-    data[i] = readIn();
-  }
+	digitalWrite(_sclk_pin, LOW);
+	digitalWrite(_ce_pin, HIGH);
+
+	_writeByte(cmdByte);
+	readValue = _readByte();
+	
+	digitalWrite(_ce_pin, LOW);
+
+	return readValue;
+}
+
+void DS1302::_writeRegister(uint8_t reg, uint8_t value)
+{
+	uint8_t cmdByte = (128 | (reg << 1));
+
+	digitalWrite(_sclk_pin, LOW);
+	digitalWrite(_ce_pin, HIGH);
+
+	_writeByte(cmdByte);
+	_writeByte(value);
+
+	digitalWrite(_ce_pin, LOW);
+}
+
+void DS1302::_burstRead()
+{
+	digitalWrite(_sclk_pin, LOW);
+	digitalWrite(_ce_pin, HIGH);
+
+	_writeByte(191);
+	for (int i=0; i<8; i++)
+	{
+		_burstArray[i] = _readByte();
+	}
+	digitalWrite(_ce_pin, LOW);
+}
+
+uint8_t	DS1302::_decode(uint8_t value)
+{
+	uint8_t decoded = value & 127;
+	decoded = (decoded & 15) + 10 * ((decoded & (15 << 4)) >> 4);
+	return decoded;
+}
+
+uint8_t DS1302::_decodeH(uint8_t value)
+{
+  if (value & 128)
+    value = (value & 15) + (12 * ((value & 32) >> 5));
+  else
+    value = (value & 15) + (10 * ((value & 48) >> 4));
+  return value;
+}
+
+uint8_t	DS1302::_decodeY(uint8_t value)
+{
+	uint8_t decoded = (value & 15) + 10 * ((value & (15 << 4)) >> 4);
+	return decoded;
+}
+
+uint8_t DS1302::_encode(uint8_t value)
+{
+	uint8_t encoded = ((value / 10) << 4) + (value % 10);
+	return encoded;
+}
+
+void DS1302::writeBuffer(DS1302_RAM r)
+{
+	digitalWrite(_sclk_pin, LOW);
+	digitalWrite(_ce_pin, HIGH);
+
+	_writeByte(254);
+	for (int i=0; i<31; i++)
+	{
+		_writeByte(r.cell[i]);
+	}
+	digitalWrite(_ce_pin, LOW);
+}
+
+DS1302_RAM DS1302::readBuffer()
+{
+	DS1302_RAM r;
+
+	digitalWrite(_sclk_pin, LOW);
+	digitalWrite(_ce_pin, HIGH);
+
+	_writeByte(255);
+	for (int i=0; i<31; i++)
+	{
+		r.cell[i] = _readByte();
+	}
+	digitalWrite(_ce_pin, LOW);
+
+	return r;
+}
+
+void DS1302::poke(uint8_t addr, uint8_t value)
+{
+	if ((addr >=0) && (addr<=30))
+	{
+		addr = (addr * 2) + 192;
+
+		digitalWrite(_sclk_pin, LOW);
+		digitalWrite(_ce_pin, HIGH);
+
+		_writeByte(addr);
+		_writeByte(value);
+
+		digitalWrite(_ce_pin, LOW);
+	}
+}
+
+uint8_t DS1302::peek(uint8_t addr)
+{
+	if ((addr >=0) && (addr<=30))
+	{
+		addr = (addr * 2) + 193;
+
+		uint8_t readValue;
+
+		digitalWrite(_sclk_pin, LOW);
+		digitalWrite(_ce_pin, HIGH);
+
+		_writeByte(addr);
+		readValue = _readByte();
+		
+		digitalWrite(_ce_pin, LOW);
+
+		return readValue;
+	}
+	else
+		return 0;
 }
