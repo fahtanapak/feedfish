@@ -11,11 +11,7 @@ void clockdate()
 
        
 
-        Serial.println(rtc.getDateStr(FORMAT_LONG,FORMAT_LITTLEENDIAN, '/'));
-
-        Serial.println(rtc.getDOWStr());
-
-        Serial.println(rtc.getTimeStr());
+       
 
 }
  
