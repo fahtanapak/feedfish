@@ -1,28 +1,37 @@
 #include "IRremote.h"
 
-int receiver = 11;
-IRrecv irrecv(receiver);
-decode_results results;
+int receiver = 11; // Signal Pin of IR receiver to Arduino Digital Pin 11
 
-void setup(){
-  Serial.begin(9600);
-  Serial.println("IR Receiver Button Decode")
-  irrecv.enableIRIn();//Start the receiver
-}
+/*-----( Declare objects )-----*/
+IRrecv irrecv(receiver);     // create instance of 'irrecv'
+decode_results results;      // create instance of 'decode_results'
 
-void loop(){
-  if (irrecv.decode(&results))
-  {
-        Serial.println(results.value, HEX);
-       //translate
-       switch(results.value)
+void setup()   /*----( SETUP: RUNS ONCE )----*/
 {
-   case 0xFF629D :Serial.println("Forward"); break;
-   case 0xFF22DD :Serial.println("Left"); break;
-   case 0xFF02DD :Serial.println("Ok"); break;
-   case 0xFFC23D :Serial.println("Right"); break;
-   case 0xFFA857 :Serial.println("Reverse"); break;
-   case 0xFF6897: Serial.println(" 1");    break;
+  Serial.begin(9600);
+  Serial.println("IR Receiver Button Decode"); 
+  irrecv.enableIRIn(); // Start the receiver
+
+}/*--(end setup )---*/
+
+
+void loop() 
+{
+  if (irrecv.decode(&results)) // have we received an IR signal?
+
+  {
+    irrecv.resume(); // receive the next value
+  }
+switch(results.value)
+
+  {
+
+  case 0xFF629D: Serial.println(" FORWARD"); break;
+  case 0xFF22DD: Serial.println(" LEFT");    break;
+  case 0xFF02FD: Serial.println(" -OK-");    break;
+  case 0xFFC23D: Serial.println(" RIGHT");   break;
+  case 0xFFA857: Serial.println(" REVERSE"); break;
+  case 0xFF6897: Serial.println(" 1");    break;
   case 0xFF9867: Serial.println(" 2");    break;
   case 0xFFB04F: Serial.println(" 3");    break;
   case 0xFF30CF: Serial.println(" 4");    break;
@@ -35,9 +44,13 @@ void loop(){
   case 0xFF4AB5: Serial.println(" 0");    break;
   case 0xFF52AD: Serial.println(" #");    break;
   case 0xFFFFFFFF: Serial.println(" REPEAT");break;  
-   defult :Serial.println("Other button");break;
+
+  default: 
+    Serial.println(" other button   ");
+
+  }// End Case
+
+  delay(500); // Do not get immediate repeat
 }
-delay(2000);
-        irrecv.resume();
-  }
-}
+
+  
