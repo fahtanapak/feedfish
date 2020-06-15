@@ -10,7 +10,7 @@ void setup()
 
 {
 
-  Serial.begin(9600);
+  
 
   rtc.halt(false);
   rtc.writeProtect(false);
