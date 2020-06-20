@@ -1,12 +1,11 @@
 #include "DS1302.h"
 
-long lastTimeStateChange =0;
-String state = "on";
+
 // Init the DS1302
 // DS1302 rtc([CE/RST], [I/O], [CLOCK]);
-DS1302 rtc(8, 7, 6);
+DS1302 rtc( 7, 6,5);
 Time t;
-Time before;
+
 void setup()
 
 {
@@ -29,24 +28,14 @@ int ti;
 void loop()
 
 { 
-long currenTime = millis();
-   if(state =="on" && currenTime - lastTimeStateChange >= 1000){
-       state ="off";
-       lastTimeStateChange = currenTime ;
-   }
-   else if(state =="off" && currenTime - lastTimeStateChange >= 1000){
-       state ="on";
-       lastTimeStateChange = currenTime ; 
-   }
-  //Serial.print(rtc.getDOWStr());
-  //Serial.print(" ");
+
+   
+  Serial.print(rtc.getDOWStr());
+  Serial.print(" ");
   // Send date
-  //Serial.print(rtc.getDateStr());
-  //Serial.print(" -- ");
- if (state =="off") 
- {
-     Serial.println(rtc.getTimeStr());
- }
-  
+  Serial.print(rtc.getDateStr());
+  Serial.print(" -- ");
+
+  RTC.read(tm)
 
 }
