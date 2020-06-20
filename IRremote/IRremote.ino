@@ -1,6 +1,6 @@
 #include "IRremote.h"
 
-int receiver = 11; 
+int receiver = 2; 
 IRrecv irrecv(receiver);     // create instance of 'irrecv'
 decode_results results;      // create instance of 'decode_results'
 

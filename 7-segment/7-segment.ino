@@ -9,12 +9,11 @@ void setup()
 {
     sevenSegment.init();
     sevenSegment.set(7);//bright0-7
+    
+     //const int DIGITS = 4;
     sevenSegment.displayNum(10);
     delay(2000);
-    sevenSegment.displayNum(1234);
-    delay(2000);
-    sevenSegment.displayStr("OFF");
-    delay(2000);
+   
 
 }
 int number = 0;
