@@ -11,7 +11,8 @@ void setup()
     sevenSegment.set(7);//bright0-7
     
      //const int DIGITS = 4;
-    sevenSegment.displayNum(10);
+    sevenSegment.displayNum(5);
+    sevenSegment.displayStr("v1");
     delay(2000);
    
 
