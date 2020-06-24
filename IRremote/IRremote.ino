@@ -1,4 +1,4 @@
-#include "IRremote.h"
+ #include "IRremote.h"
 
 int receiver = 2; 
 IRrecv irrecv(receiver);     // create instance of 'irrecv'
@@ -12,8 +12,8 @@ void setup()
 
 }
 
-
-void loop()   
+/* 
+ void loop()   
 {
   if (irrecv.decode(&results)) // have we received an IR signal?
 
@@ -75,4 +75,36 @@ void loop(){
         irrecv.resume();
   }
 }
-*/
+*/ 
+void loop()
+{
+  String newTime = "-----"; 
+  for(int i = 0; i<5; i++)
+  {
+    byte temp;
+    if (irrecv.decode(&results)) // have we received an IR signal?
+    {
+      switch(results.value)
+      {
+        case 0xFF9867: newTime.setCharAt(i, '0'); temp = 0; break;
+        case 0xFFA25D: newTime.setCharAt(i, '1'); temp = 1; break; 
+        case 0xFF629D: newTime.setCharAt(i, '2'); temp = 2; break;
+        case 0xFFE21D: newTime.setCharAt(i, '3'); temp = 3; break;  
+        case 0xFF22DD: newTime.setCharAt(i, '4'); temp = 4; break;  
+        case 0xFF02FD: newTime.setCharAt(i, '5'); temp = 5; break; 
+        case 0xFFC23D: newTime.setCharAt(i, '6'); temp = 6; break;  
+        case 0xFFE01F: newTime.setCharAt(i, '7'); temp = 7; break;
+        case 0xFFA857: newTime.setCharAt(i, '8'); temp = 8; break; 
+        case 0xFF906F: newTime.setCharAt(i, '9'); temp = 9; break;
+      } 
+      irrecv.resume(); // receive the next value
+    }
+    
+    if(newTime.charAt(i)=='-'){
+      i--;
+    }
+    //A Time Check can be placed here to see if valid times are being input.
+    delay(500);
+    Serial.println(newTime);
+  } 
+ }
