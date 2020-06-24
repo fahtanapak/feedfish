@@ -45,28 +45,11 @@ pinMode(STEPPER_PIN_4, OUTPUT);
    irrecv.enableIRIn(); // Start the receiver
 }
 Time t;
+String code1,code2,code3,code4;
 void loop()
 {
   t=rtc.getTime(); 
- //Serial.monitor 
-Serial.print("\n");
-
-if(t.hour<10){Serial.print(0);}
-
- Serial.print(t.hour,DEC);
-
- Serial.print(":");
-
- if(t.min<10){Serial.print(0);}
-
- Serial.print(t.min,DEC);
-
- Serial.print(":");
-
- if(t.sec<10){Serial.print(0);}
-
- Serial.print(t.sec,DEC);
-
+ 
  // Dot blink
   sevenSegment.point(POINT_ON); //Like blink example.
   delay(500);
@@ -74,7 +57,7 @@ if(t.hour<10){Serial.print(0);}
   delay(500);
 
 //เวลาบน7-segment
-     /* int8_t Digit0 = t.min %10 ;
+      int8_t Digit0 = t.min %10 ;
       int8_t Digit1 = (t.min % 100) / 10 ;
       int8_t Digit2 = t.hour % 10 ;
       int8_t Digit3 = (t.hour% 100) / 10 ;
@@ -83,7 +66,7 @@ if(t.hour<10){Serial.print(0);}
       Digitos[2] = Digit1 ;
       Digitos[1] = Digit2 ;
       Digitos[0] = Digit3 ;
-      sevenSegment.display(Digitos);*/
+      sevenSegment.display(Digitos);
 
 //Remote
   String newTime = "-----"; 
@@ -104,18 +87,47 @@ if(t.hour<10){Serial.print(0);}
         case 0xFFE01F: newTime.setCharAt(i, '7'); temp = 7; break;
         case 0xFFA857: newTime.setCharAt(i, '8'); temp = 8; break; 
         case 0xFF906F: newTime.setCharAt(i, '9'); temp = 9; break;
+        case 0xFFB04F: Serial.println(" #");    break;
+       case 0xFF10EF: Serial.println("Left");    break;
+       case 0xFF5AA5: Serial.println("Right");    break;
+       case 0xFF38C7: Serial.println("OK");    break;
+       case 0xFFFFFFFF: Serial.println(" REPEAT");break;  
 
       } 
       //กด# --> ตั้งเวลา
-      if(results.value == 0xFFB04F)
+      if(results.value == 0xFFB04F||results.value == 0xFF10EF)
     {
+      code1 = newTime.charAt(0);
+      code2 = newTime.charAt(1);
+      code3 = newTime.charAt(2);
+      code4 = newTime.charAt(3);
       sevenSegment.displayStr("Hour");
-      delay(1000);
-      sevenSegment.stop();
+      sevenSegment.display(newTime.charAt(0),0);
+      sevenSegment.display(newTime.charAt(1),1);
+      delay(1000); 
+      sevenSegment.displayStr("Min");
+      sevenSegment.display(newTime.charAt(2),2);
+      sevenSegment.display(newTime.charAt(3),3);
       delay(100);
+        if(t.hour == 00&& t.min == 32)
+      {
+         OneStep(false);
+         delay(2);
+      }
     }
+    //กดok
+    if(results.value ==0xFF38C7 ){
+      sevenSegment.displayStr("Sure");
+      sevenSegment.display(Digitos);
+    }
+    //กด> -->water
+    if(results.value == 0xFF5AA5)
+    {
+        sevenSegment.displayStr("----");
+        //water    
+        water();
+     }
 
-    
       irrecv.resume(); // receive the next value
     }
     
@@ -128,39 +140,15 @@ if(t.hour<10){Serial.print(0);}
     Serial.println(newTime);
   } 
 
+}
 
-   if (irrecv.decode(&results)) // have we received an IR signal?
-  {   
-     if(results.value == 0xFFB04F)
-    {
-      sevenSegment.displayStr("Hour");
-      delay(1000);
-      sevenSegment.stop();
-      delay(100);
-      
-      int8_t Digit0 = 'code1' ;
-      int8_t Digit1 = 'code2' ;
-      int8_t Digit2 = 'code3' ;
-      int8_t Digit3 = 'code4' ;
 
-      Digitos[3] = Digit0 ;
-      Digitos[2] = Digit1 ;
-      Digitos[1] = Digit2 ;
-      Digitos[0] = Digit3 ;
-      sevenSegment.display(Digitos);
-    }
-    translateIR(); 
-    irrecv.resume(); // receive the next value
-    if(results.value == 0xFF5AA5)
-    {
-        sevenSegment.displayStr("----");
-        
-        
-    //water    
-        sensorValue = analogRead(sensorPin);    
-        delay(1000);          
-        Serial.print("sensor = " );                       
-       Serial.println(sensorValue);     
+
+void water(){
+    sensorValue = analogRead(sensorPin);    
+    delay(1000);          
+    Serial.print("sensor = " );                       
+    Serial.println(sensorValue);     
 
        if(sensorValue <= 0)
      {
@@ -207,67 +195,6 @@ if(t.hour<10){Serial.print(0);}
       sevenSegment.displayStr ("100P");
     }
       delay(500);
-     }
-  }  
-  else if(!irrecv.decode(&results))
-  {
-      int8_t Digit0 = t.min %10 ;
-      int8_t Digit1 = (t.min % 100) / 10 ;
-      int8_t Digit2 = t.hour % 10 ;
-      int8_t Digit3 = (t.hour% 100) / 10 ;
-
-      Digitos[3] = Digit0 ;
-      Digitos[2] = Digit1 ;
-      Digitos[1] = Digit2 ;
-      Digitos[0] = Digit3 ;
-      sevenSegment.display(Digitos);
-
-  }
-}
-
-
-void translateIR() 
-{
-  switch(results.value)
-
-  {
-  case 0xFFA25D: 1;   break;
-  case 0xFF629D: 2;   break;
-  case 0xFFE21D: 3;   break;
-  case 0xFF22DD: 4;   break;
-  case 0xFF02FD: 5;   break;
-  case 0xFFC23D: 6;   break;
-  case 0xFFE01F: 7;   break;
-  case 0xFFA857: 8;   break;
-  case 0xFF906F: 9;   break;
-  case 0xFF9867: Serial.println(" 0");    break;
-  case 0xFF6897: Serial.println(" *");    break;
-  case 0xFFB04F: Serial.println(" #");    break;
-  case 0xFF10EF: Serial.println("Left");    break;
-  case 0xFF5AA5: Serial.println("Right");    break;
-  case 0xFF18E7: Serial.println("UP");    break;
-  case 0xFF4AB5: Serial.println("DOWN");    break;
-  case 0xFF38C7: Serial.println("OK");    break;
-  case 0xFFFFFFFF: Serial.println(" REPEAT");break;  
-
-  default: 
-   Serial.println(" other button   ");
-
-  }// End Case
-
-delay(500); // Do not get immediate repeat
-
-String code1,code2,code3,code4;
-code1 = results.value;
-code2 = results.value;
-code3 = results.value;
-code4 = results.value;
-if(t.hour == 'code1'+'code2'&& t.min == 'code3'+'code4')
-{
-    OneStep(false);
-    delay(2);
-}
-
 }
 void OneStep(bool dir){
     if(dir)
