@@ -18,9 +18,11 @@ void setup()
 
 }
 int number = 0;
+String nm;
 void loop()
 {
     sevenSegment.displayNum(number++);
+    
     delay(100);
 
 }

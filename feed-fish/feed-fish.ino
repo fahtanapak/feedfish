@@ -41,11 +41,13 @@ pinMode(STEPPER_PIN_1, OUTPUT);
 pinMode(STEPPER_PIN_2, OUTPUT);
 pinMode(STEPPER_PIN_3, OUTPUT);
 pinMode(STEPPER_PIN_4, OUTPUT);
-   
+
    irrecv.enableIRIn(); // Start the receiver
 }
 Time t;
 String code1,code2,code3,code4;
+int Hour =0;
+int Min = 0;
 void loop()
 {
   t=rtc.getTime(); 
@@ -55,7 +57,7 @@ void loop()
   delay(500);
   sevenSegment.point(POINT_ON); //Like blink example.
   delay(500);
-
+ 
 //เวลาบน7-segment
       int8_t Digit0 = t.min %10 ;
       int8_t Digit1 = (t.min % 100) / 10 ;
@@ -67,10 +69,20 @@ void loop()
       Digitos[1] = Digit2 ;
       Digitos[0] = Digit3 ;
       sevenSegment.display(Digitos);
-
+     
+      if (irrecv.decode(&results)) // have we received an IR signal?
+  {
+    translateIR(); 
+    irrecv.resume(); // receive the next value
+  }
+}   
+  
 //Remote
-  String newTime = "-----"; 
-  for(int i = 0; i<5; i++)
+ String changetime()
+ { delay(500);
+  irrecv.resume(); 
+  String newTime = "----"; 
+  for(int i = 0; i<4; i++)
   {
     byte temp;
     if (irrecv.decode(&results)) // have we received an IR signal?
@@ -97,23 +109,14 @@ void loop()
       //กด# --> ตั้งเวลา
       if(results.value == 0xFFB04F||results.value == 0xFF10EF)
     {
-      code1 = newTime.charAt(0);
-      code2 = newTime.charAt(1);
-      code3 = newTime.charAt(2);
-      code4 = newTime.charAt(3);
       sevenSegment.displayStr("Hour");
-      sevenSegment.display(newTime.charAt(0),0);
-      sevenSegment.display(newTime.charAt(1),1);
+      sevenSegment.displayNum(Hour);
+    
       delay(1000); 
       sevenSegment.displayStr("Min");
-      sevenSegment.display(newTime.charAt(2),2);
-      sevenSegment.display(newTime.charAt(3),3);
+      sevenSegment.displayNum(Min);
       delay(100);
-        if(t.hour == 00&& t.min == 32)
-      {
-         OneStep(false);
-         delay(2);
-      }
+        
     }
     //กดok
     if(results.value ==0xFF38C7 ){
@@ -123,8 +126,7 @@ void loop()
     //กด> -->water
     if(results.value == 0xFF5AA5)
     {
-        sevenSegment.displayStr("----");
-        //water    
+        sevenSegment.displayStr("----");   
         water();
      }
 
@@ -134,68 +136,39 @@ void loop()
     if(newTime.charAt(i)=='-'){
       i--;
     }
-    //A Time Check can be placed here to see if valid times are being input.
     delay(500);
-    //sevenSegment.displayNum(results.value);
     Serial.println(newTime);
   } 
 
+    return newTime; 
+      if(t.hour == Hour&& t.min == Min)
+      {
+         OneStep(false);
+         delay(2);
+      }
+}
+
+void translateIR() 
+{
+  switch(results.value)
+
+  {
+  
+  case 0xFFB04F: Serial.println(" #");  
+    String newTime = changetime();
+    Hour = (newTime.substring(0,2)).toInt();
+    Min = (newTime.substring(2)).toInt();
+    int sec = 0;
+ break; 
+
+  default: 
+    Serial.println("Error" + results.value );
+  }
+  delay(500);
 }
 
 
 
-void water(){
-    sensorValue = analogRead(sensorPin);    
-    delay(1000);          
-    Serial.print("sensor = " );                       
-    Serial.println(sensorValue);     
-
-       if(sensorValue <= 0)
-     {
-      sevenSegment.displayStr ("0P");
-     }
-     else if(sensorValue <= 65)
-    {
-      sevenSegment.displayStr ("10P");
-    }
-     else if(sensorValue <= 130)
-    {
-     sevenSegment.displayStr ("20P");
-    }
-    else if(sensorValue <= 195)
-    {
-     sevenSegment.displayStr ("30P");
-    }
-     else if(sensorValue <= 260)
-    {
-      sevenSegment.displayStr ("40p");
-    }
-     else if(sensorValue <= 325)
-    {
-      sevenSegment.displayStr ("50P");
-    }
-    else if(sensorValue <= 390)
-    {
-      sevenSegment.displayStr ("60P");
-    }
-    else if(sensorValue <= 455)
-    {
-      sevenSegment.displayStr ("70P");
-    }
-    else if(sensorValue <= 520)
-    {
-      sevenSegment.displayStr ("80P");
-     }
-     else if(sensorValue <= 585)
-    {
-      sevenSegment.displayStr ("90P");
-    }
-     else if(sensorValue <= 650)
-    {
-      sevenSegment.displayStr ("100P");
-    }
-      delay(500);
-}
 void OneStep(bool dir){
     if(dir)
  {
@@ -258,5 +231,60 @@ void OneStep(bool dir){
 step_number++;
   if(step_number > 3){
     step_number = 0;
+    
   }
+}
+
+
+void water(){
+    sensorValue = analogRead(sensorPin);    
+    delay(1000);          
+    Serial.print("sensor = " );                       
+    Serial.println(sensorValue);     
+
+       if(sensorValue <= 0)
+     {
+      sevenSegment.displayStr ("0P");
+     }
+     else if(sensorValue <= 65)
+    {
+      sevenSegment.displayStr ("10P");
+    }
+     else if(sensorValue <= 130)
+    {
+     sevenSegment.displayStr ("20P");
+    }
+    else if(sensorValue <= 195)
+    {
+     sevenSegment.displayStr ("30P");
+    }
+     else if(sensorValue <= 260)
+    {
+      sevenSegment.displayStr ("40p");
+    }
+     else if(sensorValue <= 325)
+    {
+      sevenSegment.displayStr ("50P");
+    }
+    else if(sensorValue <= 390)
+    {
+      sevenSegment.displayStr ("60P");
+    }
+    else if(sensorValue <= 455)
+    {
+      sevenSegment.displayStr ("70P");
+    }
+    else if(sensorValue <= 520)
+    {
+      sevenSegment.displayStr ("80P");
+     }
+     else if(sensorValue <= 585)
+    {
+      sevenSegment.displayStr ("90P");
+    }
+     else if(sensorValue <= 650)
+    {
+      sevenSegment.displayStr ("100P");
+    }
+      delay(500);
 }
