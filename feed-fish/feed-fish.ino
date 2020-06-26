@@ -45,7 +45,7 @@ pinMode(STEPPER_PIN_4, OUTPUT);
    irrecv.enableIRIn(); // Start the receiver
 }
 Time t;
-String code1,code2,code3,code4;
+
 int Hour =0;
 int Min = 0;
 void loop()
@@ -53,9 +53,7 @@ void loop()
   t=rtc.getTime(); 
  
  // Dot blink
-  sevenSegment.point(POINT_ON); //Like blink example.
-  delay(500);
-  sevenSegment.point(POINT_ON); //Like blink example.
+  sevenSegment.point(POINT_ON); 
   delay(500);
  
 //เวลาบน7-segment
@@ -99,36 +97,25 @@ void loop()
         case 0xFFE01F: newTime.setCharAt(i, '7'); temp = 7; break;
         case 0xFFA857: newTime.setCharAt(i, '8'); temp = 8; break; 
         case 0xFF906F: newTime.setCharAt(i, '9'); temp = 9; break;
-        case 0xFFB04F: Serial.println(" #");    break;
        case 0xFF10EF: Serial.println("Left");    break;
        case 0xFF5AA5: Serial.println("Right");    break;
        case 0xFF38C7: Serial.println("OK");    break;
        case 0xFFFFFFFF: Serial.println(" REPEAT");break;  
 
       } 
-      //กด# --> ตั้งเวลา
-      if(results.value == 0xFFB04F||results.value == 0xFF10EF)
-    {
-      sevenSegment.displayStr("Hour");
-      sevenSegment.displayNum(Hour);
-    
-      delay(1000); 
-      sevenSegment.displayStr("Min");
-      sevenSegment.displayNum(Min);
-      delay(100);
-        
-    }
+      
     //กดok
-    if(results.value ==0xFF38C7 ){
+     if(results.value ==0xFF38C7 )
+    {
       sevenSegment.displayStr("Sure");
       sevenSegment.display(Digitos);
     }
     //กด> -->water
-    if(results.value == 0xFF5AA5)
+     if(results.value == 0xFF5AA5)
     {
         sevenSegment.displayStr("----");   
         water();
-     }
+    }
 
       irrecv.resume(); // receive the next value
     }
@@ -164,6 +151,18 @@ void translateIR()
   default: 
     Serial.println("Error" + results.value );
   }
+  //กด# --> ตั้งเวลา
+      if(results.value == 0xFFB04F||results.value == 0xFF10EF)
+     {
+      sevenSegment.displayStr("Hour");
+      sevenSegment.displayNum(Hour);
+    
+      delay(1000); 
+      sevenSegment.displayStr("Min");
+      sevenSegment.displayStr(Hour+Min);
+      delay(100);
+        
+     }
   delay(500);
 }
 
